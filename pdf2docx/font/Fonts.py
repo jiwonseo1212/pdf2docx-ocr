@@ -22,7 +22,7 @@ but more generic properties are required further:
 import os
 from io import BytesIO
 from collections import namedtuple
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTFont, newTable
 from ..common.Collection import BaseCollection
 from ..common.constants import (CJK_CODEPAGE_BITS, CJK_UNICODE_RANGE_BITS, CJK_UNICODE_RANGES)
 from ..common.share import decode
@@ -68,10 +68,10 @@ class Fonts(BaseCollection):
 
         # process xref one by one
         fonts = []
-        for xref in xrefs:
+        for xref in xrefs: #xrefs => {6717, 6720, 6723, 203, 205, 214, 216, 218, 225, 226, 231, 235, 238, 239, 240, 241, 242, 244, 245, 246, 247, 248, 249, 250}
             basename, ext, _, buffer = fitz_doc.extract_font(xref)
             if not basename: continue
-
+            # basename 예시 :'BCDEEE+Calibri' #ext 예시: ttf
             basename = decode(basename)
             name = cls._normalized_font_name(basename)
 
@@ -238,3 +238,73 @@ class Fonts(BaseCollection):
 
         # default, return False if the above checks did not identify a CJK font
         return False
+
+class OCRFont(Fonts):
+
+    @classmethod
+    def extract(cls, doc_images): #list[OCRPage]
+        '''Make dummy fonts from PDF and get properties.
+        * Only embedded fonts (v.s. the base 14 fonts) can be extracted.
+        * The extracted fonts may be invalid due to reason from PDF file itself.
+        '''
+        fonts = []
+        for page in doc_images:
+            for text in page.ocr_result:
+                left, top, width, height = text.w, text.y, text.w, text.h
+
+
+                tt = cls._create_dummy_ttfont(height)
+                name = cls.get_font_family_name(tt)
+                line_height = cls.get_line_height_factor(tt)
+
+                fonts.append(Font(descriptor=cls._to_descriptor(name),
+                    name=name,
+                    line_height=line_height))
+        return cls(fonts)
+ 
+    def _create_dummy_ttfont(self, height):
+        # 빈 TTFont 생성
+        font_stream = BytesIO()
+        ttfont = TTFont()
+        
+        # 기본적인 name 테이블 설정 (Arial)
+        name_table = newTable('name')
+        name_table.names = [
+            # 폰트 이름 정보 추가 (Arial로 설정)
+            newTable('name').NameRecord(nameID=1, platformID=3, encodingID=1, languageID=1033, string="Arial")
+        ]
+        ttfont['name'] = name_table
+        
+        # OS/2 테이블 추가하여 Arial 기본 메트릭 설정
+        os2_table = newTable('OS/2')
+        os2_table.sTypoAscender = int(height * 1.2)
+        os2_table.sTypoDescender = int(-height * 0.3)
+        os2_table.usWinAscent = int(height * 1.2)
+        os2_table.usWinDescent = int(height * 0.3)
+        ttfont['OS/2'] = os2_table
+        
+        # head 테이블 설정 (폰트의 기본 정보 제공)
+        head_table = newTable('head')
+        head_table.unitsPerEm = int(height)
+        ttfont['head'] = head_table
+
+        # 더미 glyf 테이블 (빈 글리프 추가)
+        glyf_table = newTable('glyf')
+        glyf_table.glyphs = {}
+        ttfont['glyf'] = glyf_table
+
+        # 더미 hhea 테이블 설정
+        hhea_table = newTable('hhea')
+        hhea_table.ascent = int(height)
+        hhea_table.descent = int(-height * 0.3)
+        ttfont['hhea'] = hhea_table
+        
+        # 글꼴 데이터를 메모리로 저장
+        ttfont.save(font_stream)
+        font_stream.seek(0)
+        
+        # TTFont 객체를 로드하여 반환
+        return TTFont(font_stream)
+
+    def get_font_data(self):
+        return self.font_data       

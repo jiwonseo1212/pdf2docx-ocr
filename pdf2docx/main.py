@@ -36,7 +36,7 @@ class PDF2DOCX:
             if end: end -= 1
             if pages: pages = [i-1 for i in pages]
 
-        cv = Converter(pdf_file, password)
+        cv = Converter(pdf_file, password, ocr=kwargs.get("ocr"))
         try:
             cv.convert(docx_file, start, end, pages, **kwargs)
         except Exception as e:
