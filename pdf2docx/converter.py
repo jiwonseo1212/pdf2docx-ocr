@@ -1,11 +1,13 @@
 '''PDF to Docx Converter.'''
 import json
+import pytesseract
 import logging
 import os
+from pdf2image import convert_from_path
 from multiprocessing import Pool, cpu_count
 from time import perf_counter
 from typing import AnyStr, IO, Union
-
+from dataclasses import dataclass
 import fitz
 from docx import Document
 
@@ -24,6 +26,45 @@ logging.basicConfig(
     format="[%(levelname)s] %(message)s")
 
 
+@dataclass
+class OCRText:
+    w: int
+    y: int
+    w: int
+    h: int
+    text: str
+
+@dataclass
+class OCRPage:
+    page: int
+    width: float
+    height: float
+    ocr_result: list[OCRText]
+
+
+def get_ocr_file(pdf_path: str) -> list[OCRPage]:
+    images = convert_from_path(pdf_path)
+    all_pages = []
+    for i, image in enumerate(images):
+        
+        width, height = image.size
+        
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+
+        n_boxes = len(data['level'])
+        texts = []
+        for j in range(n_boxes):
+            (x, y, w, h) = (data['left'][j], data['top'][j], data['width'][j], data['height'][j])
+            text = data['text'][j]
+            if text.strip():  
+                print(f"Text: {text}, BBox: (x={x}, y={y}, w={w}, h={h})")
+                ocr_text =OCRText(w=w, y=y, w=w, h=h, text=text)
+                texts.append(ocr_text)
+        page = OCRPage(page=i, width=width, height=height, ocr_result=texts)
+        all_pages.append(page)
+    return all_pages
+        
+
 class Converter:
     '''The ``PDF`` to ``docx`` converter.
     
@@ -36,7 +77,7 @@ class Converter:
     '''
 
     def __init__(
-        self, pdf_file: str = None, password: str = None, stream: bytes = None
+        self, pdf_file: str = None, password: str = None, stream: bytes = None, ocr:bool= False
     ):
         '''Initialize fitz object with given pdf file path.
 
@@ -48,12 +89,18 @@ class Converter:
         # fitz object
         self.filename_pdf = pdf_file
         self.password = str(password or "")
+        self.is_ocr = ocr
 
         if not pdf_file and not stream:
             raise ValueError("Either pdf_file or stream must be given.")
 
+        if self.is_ocr:
+            self.doc_ocrred_image: list[OCRPage] = get_ocr_file(pdf_file)
+
+
         if stream:
             self._fitz_doc = fitz.Document(stream=stream)
+        
 
         else:
             self._fitz_doc = fitz.Document(pdf_file)
@@ -130,8 +177,25 @@ class Converter:
         return self.load_pages(start, end, pages) \
             .parse_document(**kwargs) \
             .parse_pages(**kwargs)
+    
 
+    def parse_ocred_doc(self, start:int=0, end:int=None, pages:list=None, **kwargs):
+        '''OCR and parse pages in three steps:
+        * open PDF file with ``PyMuPDF``
+        * analyze whole document, e.g. page section, header/footer and margin
+        * parse specified pages, e.g. paragraph, image and table
 
+        Args:
+            start (int, optional): First page to process. Defaults to 0, the first page.
+            end (int, optional): Last page to process. Defaults to None, the last page.
+            pages (list, optional): Range of page indexes to parse. Defaults to None.
+            kwargs (dict, optional): Configuration parameters. 
+        '''
+        return self.load_pages(start, end, pages) \
+            .parse_document(**kwargs) \
+            .parse_pages(**kwargs)
+
+    
     def load_pages(self, start:int=0, end:int=None, pages:list=None):
         '''Step 1 of converting process: open PDF file with ``PyMuPDF``, 
         especially for password encrypted file.
@@ -143,16 +207,19 @@ class Converter:
         '''
         logging.info(self._color_output('[1/4] Opening document...'))
 
+        if self.is_ocr:
+            num = len(self.doc_image)
+        else:
         # encrypted pdf ?
-        if self._fitz_doc.needs_pass:
-            if not self.password:
-                raise ConversionException(f'Require password for {self.filename_pdf}.')
+            if self._fitz_doc.needs_pass:
+                if not self.password:
+                    raise ConversionException(f'Require password for {self.filename_pdf}.')
 
-            elif not self._fitz_doc.authenticate(self.password):
-                raise ConversionException('Incorrect password.')
+                elif not self._fitz_doc.authenticate(self.password):
+                    raise ConversionException('Incorrect password.')
 
-        # initialize empty pages
-        num = len(self._fitz_doc)
+            # initialize empty pages
+            num = len(self._fitz_doc)
         self._pages.reset([Page(id=i, skip_parsing=True) for i in range(num)])
 
         # set pages to parse
@@ -167,8 +234,10 @@ class Converter:
         '''Step 2 of converting process: analyze whole document, e.g. page section,
         header/footer and margin.'''
         logging.info(self._color_output('[2/4] Analyzing document...'))
-        
-        self._pages.parse(self.fitz_doc, **kwargs)
+        if not self.is_ocr:
+            self._pages.parse(self.fitz_doc, **kwargs)
+        else:
+            self._pages.parse_ocr_image(self.doc_image, **kwargs)
         return self
 
     
@@ -351,6 +420,8 @@ class Converter:
         # convert page by page
         if settings['multi_processing']:
             self._convert_with_multi_processing(docx_filename, start, end, **settings)
+        if settings["ocr"]:
+            self.parse_ocred_doc(start, end, pages, **settings).make_docx(docx_filename, **settings)
         else:
             self.parse(start, end, pages, **settings).make_docx(docx_filename, **settings)
 

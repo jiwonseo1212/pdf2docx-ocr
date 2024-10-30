@@ -82,6 +82,21 @@ class Pages(BaseCollection):
             sections = raw_page.parse_section(**settings)
             page.sections.extend(sections)
     
+    def parse_ocr_image(self, doc_image, **setting):
+        '''Analyze document structure, e.g. page section, header, footer.
+
+        Args:
+            fitz_doc (fitz.Document): ``PyMuPDF`` Document instance.
+            settings (dict): Parsing parameters.
+        '''
+        # ---------------------------------------------
+        # 0. extract fonts properties, especially line height ratio
+        # ---------------------------------------------
+        fonts = Fonts.extract(doc_image)
+
+        # ---------------------------------------------
+        # 1. extract and then clean up raw page
+        # ---------------------------------------------
 
     @staticmethod
     def _parse_document(raw_pages:list):
