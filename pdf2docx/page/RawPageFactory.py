@@ -4,12 +4,13 @@ e.g. PyMuPDF, pdfminer.six. For now, only PyMuPDF is implemented.
 '''
 
 from .RawPageFitz import RawPageFitz
-
+from .RawPageOCR import RawPageOCR
 
 class RawPageFactory:
 
     MAP = {
-        'PYMUPDF': RawPageFitz
+        'PYMUPDF': RawPageFitz,
+        'OCR': RawPageOCR
     }
 
     @classmethod

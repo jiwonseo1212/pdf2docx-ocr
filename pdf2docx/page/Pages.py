@@ -6,7 +6,7 @@ import logging
 
 from .RawPageFactory import RawPageFactory
 from ..common.Collection import BaseCollection
-from ..font.Fonts import Fonts
+from ..font.Fonts import Fonts, OCRFont
 
 
 class Pages(BaseCollection):
@@ -82,7 +82,7 @@ class Pages(BaseCollection):
             sections = raw_page.parse_section(**settings)
             page.sections.extend(sections)
     
-    def parse_ocr_image(self, doc_image, **setting):
+    def parse_ocr_image(self, doc_image, **settings):
         '''Analyze document structure, e.g. page section, header, footer.
 
         Args:
@@ -92,11 +92,25 @@ class Pages(BaseCollection):
         # ---------------------------------------------
         # 0. extract fonts properties, especially line height ratio
         # ---------------------------------------------
-        fonts = Fonts.extract(doc_image)
+        fonts = OCRFont.extract(doc_image)
 
         # ---------------------------------------------
         # 1. extract and then clean up raw page
         # ---------------------------------------------
+        pages, raw_pages = [], []
+        words_found = False
+        for page in self:
+            if page.skip_parsing:
+                continue
+
+            raw_page = RawPageFactory.create(page_engine=doc_image[page.id], backend="OCR")
+            raw_page.restore(**settings)
+
+            if not words_found and raw_page.raw_text.strip():
+                words_found = True
+            
+            raw_page.clean_up(**settings)
+            
 
     @staticmethod
     def _parse_document(raw_pages:list):

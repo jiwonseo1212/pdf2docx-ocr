@@ -22,7 +22,11 @@ but more generic properties are required further:
 import os
 from io import BytesIO
 from collections import namedtuple
+
 from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables._n_a_m_e import NameRecord
+from fontTools.ttLib.tables._g_l_y_f import Glyph
+from io import BytesIO
 from ..common.Collection import BaseCollection
 from ..common.constants import (CJK_CODEPAGE_BITS, CJK_UNICODE_RANGE_BITS, CJK_UNICODE_RANGES)
 from ..common.share import decode
@@ -261,43 +265,27 @@ class OCRFont(Fonts):
                     name=name,
                     line_height=line_height))
         return cls(fonts)
- 
-    def _create_dummy_ttfont(self, height):
-        # 빈 TTFont 생성
+    
+
+
+
+    @classmethod
+    def _create_dummy_ttfont(cls, height):
+        # Arial을 베이스로 하는 더미 폰트를 생성합니다.
         font_stream = BytesIO()
-        ttfont = TTFont()
         
-        # 기본적인 name 테이블 설정 (Arial)
-        name_table = newTable('name')
-        name_table.names = [
-            # 폰트 이름 정보 추가 (Arial로 설정)
-            newTable('name').NameRecord(nameID=1, platformID=3, encodingID=1, languageID=1033, string="Arial")
-        ]
-        ttfont['name'] = name_table
+        # 기본 Arial 폰트를 로드하여 TTFont 객체로 변환합니다.
+        ttfont = TTFont("/media/works/OCR_Project/pdf2docx-ocr/pdf2docx/font/arial.ttf")  # Arial 또는 다른 기본 폰트 경로를 넣어주세요.
         
-        # OS/2 테이블 추가하여 Arial 기본 메트릭 설정
-        os2_table = newTable('OS/2')
-        os2_table.sTypoAscender = int(height * 1.2)
-        os2_table.sTypoDescender = int(-height * 0.3)
-        os2_table.usWinAscent = int(height * 1.2)
-        os2_table.usWinDescent = int(height * 0.3)
-        ttfont['OS/2'] = os2_table
+        # OS/2 테이블 및 head 테이블에서 높이 값만 필요한 대로 설정합니다.
+        if 'OS/2' in ttfont:
+            ttfont['OS/2'].sTypoAscender = int(height * 1.2)
+            ttfont['OS/2'].sTypoDescender = int(-height * 0.3)
+            ttfont['OS/2'].usWinAscent = int(height * 1.2)
+            ttfont['OS/2'].usWinDescent = int(height * 0.3)
         
-        # head 테이블 설정 (폰트의 기본 정보 제공)
-        head_table = newTable('head')
-        head_table.unitsPerEm = int(height)
-        ttfont['head'] = head_table
-
-        # 더미 glyf 테이블 (빈 글리프 추가)
-        glyf_table = newTable('glyf')
-        glyf_table.glyphs = {}
-        ttfont['glyf'] = glyf_table
-
-        # 더미 hhea 테이블 설정
-        hhea_table = newTable('hhea')
-        hhea_table.ascent = int(height)
-        hhea_table.descent = int(-height * 0.3)
-        ttfont['hhea'] = hhea_table
+        if 'head' in ttfont:
+            ttfont['head'].unitsPerEm = int(height)
         
         # 글꼴 데이터를 메모리로 저장
         ttfont.save(font_stream)

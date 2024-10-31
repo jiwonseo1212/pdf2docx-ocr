@@ -13,6 +13,11 @@ from docx import Document
 
 from .page.Page import Page
 from .page.Pages import Pages
+import sys
+sys.path.append("/media/works/OCR_Project/pdf2docx-ocr/pdf2docx/")
+from pdf_ocr.models.text import OCRText
+from pdf_ocr.models.page import OCRPage
+
 
 # check PyMuPDF version
 # 1.19.0 <= v <= 1.23.8, or v>=1.23.16
@@ -25,21 +30,6 @@ logging.basicConfig(
     level=logging.INFO, 
     format="[%(levelname)s] %(message)s")
 
-
-@dataclass
-class OCRText:
-    w: int
-    y: int
-    w: int
-    h: int
-    text: str
-
-@dataclass
-class OCRPage:
-    page: int
-    width: float
-    height: float
-    ocr_result: list[OCRText]
 
 
 def get_ocr_file(pdf_path: str) -> list[OCRPage]:
@@ -58,7 +48,7 @@ def get_ocr_file(pdf_path: str) -> list[OCRPage]:
             text = data['text'][j]
             if text.strip():  
                 print(f"Text: {text}, BBox: (x={x}, y={y}, w={w}, h={h})")
-                ocr_text =OCRText(w=w, y=y, w=w, h=h, text=text)
+                ocr_text =OCRText(x=x, y=y, w=w, h=h, text=text)
                 texts.append(ocr_text)
         page = OCRPage(page=i, width=width, height=height, ocr_result=texts)
         all_pages.append(page)
@@ -95,7 +85,7 @@ class Converter:
             raise ValueError("Either pdf_file or stream must be given.")
 
         if self.is_ocr:
-            self.doc_ocrred_image: list[OCRPage] = get_ocr_file(pdf_file)
+            self.doc_image: list[OCRPage] = get_ocr_file(pdf_file)
 
 
         if stream:
